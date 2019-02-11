@@ -8,7 +8,6 @@ import { connect } from 'react-redux';
 import { HashRouter as Router, Route } from 'react-router-dom';
 
 import Loading from 'components/shared/Loading.jsx';
-import SignIn from 'components/Auth/SignIn.jsx';
 
 import { get_user } from 'reduxs/Auth.js';
 
@@ -19,41 +18,34 @@ const LoadMain = Loadable({
 	delay: 300
 });
 
+const LoadSignIn = Loadable({
+	loader: () => import('components/auth/SignIn.jsx'),
+	loading: Loading,
+	delay: 300
+});
+
 
 type Props = {
+	app: Object,
 	auth: Object,
 	get_current_user: Function
 };
 
 /**
  * App Login authentication
- * 
- * @author wangyuan
+ *
  * @class Auth
  * @extends {React.Component<Props>}
  */
 class Auth extends React.Component<Props> {
 
-	constructor(props: Props) {
-		super(props);
-	}
-
 	render() {
-		const { auth } = this.props;
+		const { app, auth } = this.props,
+			Comp = auth.user && LoadMain || LoadSignIn;
 
 		return (
 			<Router>
-				{
-					auth.user ? 
-						(
-							<LoadMain />
-						) :
-						(
-							<section>
-								<Route component={SignIn} />
-							</section>
-						)
-				}
+				<Route render={props => <Comp {...props} app={app} auth={auth} />} />
 			</Router>
 		);
 	}
@@ -67,6 +59,7 @@ class Auth extends React.Component<Props> {
 
 // Redux
 const mapStateToProps: Function = state => ({
+	app: state.App,
 	auth: state.Auth
 });
 
