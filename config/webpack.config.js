@@ -1,18 +1,23 @@
 const PATH = require('path');
 
-const gulp_config = require('./gulpfile.config');
+const path_config = require('./path.config.js');
 
 const webpack = require('webpack');
 
-const HtmlWebpackPlugin = require('html-webpack-plugin'),
-	UglifyJsPlugin    = require('uglifyjs-webpack-plugin'),
-	ExtractTextPlugin = require('extract-text-webpack-plugin');
+const CopyWebpackPlugin = require('copy-webpack-plugin'),
+	HtmlWebpackPlugin       = require('html-webpack-plugin'),
+	UglifyJsPlugin          = require('uglifyjs-webpack-plugin'),
+	MiniCssExtractPlugin    = require('mini-css-extract-plugin'),
+	OptimizeCSSAssetsPlugin = require('optimize-css-assets-webpack-plugin'),
+	ImageminPlugin          = require('imagemin-webpack-plugin').default,
+	ImageminJpeg            = require('imagemin-jpeg-recompress'),
+	BundleAnalyzerPlugin    = require('webpack-bundle-analyzer').BundleAnalyzerPlugin;
 
 
 module.exports = {
-	mode        : gulp_config.dev ? 'development'                 : 'production',
+	mode        : path_config.dev ? 'development'                 : 'production',
 	target      : 'web',
-	devtool     : gulp_config.map ? 'cheap-module-eval-source-map': 'none',
+	devtool     : path_config.map ? 'cheap-module-eval-source-map': 'none',
 	watch       : true,
 	watchOptions: {
 		ignored: /node_modules/
@@ -22,11 +27,11 @@ module.exports = {
 		app: './src/app.js'
 	},
 	output: {
-		path         : gulp_config.dist,
-		filename     : '[name].[chunkhash].js',
-		chunkFilename: '[name].[chunkhash].js'
+		path         : path_config.dist,
+		filename     : path_config.dev ? '[name].js': '[name].[chunkhash].js',
+		chunkFilename: path_config.dev ? '[name].js': '[name].[chunkhash].js'
 	},
-	module : {
+	module: {
 		rules: [
 			{
 				test   : /\.(js|jsx)$/,
@@ -47,37 +52,35 @@ module.exports = {
 				]
 			},
 			{
-				test   : /\.scss$/,
+				test   : /\.(sa|sc|c)ss$/,
 				exclude: /node_modules/,
-				use    : ExtractTextPlugin.extract({
-					fallback: 'style-loader',
-					use     : [
-						{
-							loader : 'css-loader',
-							options: {
-								minimize    : true,
-								sourceMap   : true,
-								importLoader: 2
-							}
-						},
-						{
-							loader : 'postcss-loader',
-							options: {
-								sourceMap: true,
-								ident    : 'postcss',
-								plugins  : () => [
-									require('autoprefixer')({ browsers: ['last 2 versions'] })
-								]
-							}
-						},
-						{
-							loader : 'sass-loader',
-							options: {
-								sourceMap: true
-							}
+				use    : [
+					path_config.dev ? 'style-loader': MiniCssExtractPlugin.loader,
+					{
+						loader : 'css-loader',
+						options: {
+							minimize    : true,
+							sourceMap   : true,
+							importLoader: 2
 						}
-					]
-				})
+					},
+					{
+						loader : 'postcss-loader',
+						options: {
+							sourceMap: true,
+							ident    : 'postcss',
+							plugins  : () => [
+								require('autoprefixer')({ browsers: ['last 2 versions'] })
+							]
+						}
+					},
+					{
+						loader : 'sass-loader',
+						options: {
+							sourceMap: true
+						}
+					}
+				]
 			},
 			{
 				test: /\.(png|jpg|gif)$/,
@@ -95,30 +98,61 @@ module.exports = {
 	plugins: [
 		new webpack.DllReferencePlugin({
 			context : '.',
-			manifest: PATH.join(gulp_config.dist, './vendor-manifest.json')
+			manifest: PATH.join(path_config.dist, './vendor-manifest.json')
 		}),
+		new CopyWebpackPlugin([{
+			from : './src/vendors',
+			to   : './vendors',
+			cache: true
+		}]),
 		new HtmlWebpackPlugin({
 			filename: 'index.html',
 			template: './src/app.html',
 			chunks  : ['app', 'commons']
 		}),
-		new UglifyJsPlugin({
-			sourceMap: true
+		new MiniCssExtractPlugin({
+			filename     : path_config.dev ? '[name].css': '[name].[hash].css',
+			chunkFilename: path_config.dev ? '[id].css'  : '[id].[hash].css',
 		}),
-		new ExtractTextPlugin({
-			filename: '[name].[chunkhash].css'
-		})
+		new ImageminPlugin({
+			disable: path_config.dev,
+			optipng: {
+				optimizationLevel: 7
+			},
+			gifsicle: {
+				optimizationLevel: 3,
+				interlaced       : true
+			},
+			jpegtran: null,
+			svgo    : {
+				plugins: [
+					{ removeViewBox: true },
+					{ cleanupIDs: false }
+				]
+			},
+			pngquant: {},
+			plugins : [
+				ImageminJpeg()
+			]
+		}),
+		new BundleAnalyzerPlugin()
 	],
 	resolve: {
 		alias: {
 			components: PATH.resolve('./src/components/'),
-			modules   : PATH.resolve('./src/modules/'),
 			utils     : PATH.resolve('./src/utils/'),
-			vendors   : PATH.resolve('./src/vendors/'),
-			config    : PATH.resolve('./src/config/')
+			vendors   : PATH.resolve('./src/vendors/')
 		}
 	},
 	optimization: {
+		minimizer: [
+			new UglifyJsPlugin({
+				cache    : true,
+				parallel : true,
+				sourceMap: true
+			}),
+			new OptimizeCSSAssetsPlugin({})
+		],
 		splitChunks: {
 			cacheGroups: {
 				commons: {
@@ -140,9 +174,9 @@ module.exports = {
 		//runtimeChunk: true
 	},
 	performance: {
-		hints: 'warning',
-		/* assetFilter: assetFilename => {
-			return !(/vendor/.test(assetFilename));
-		} */
+		hints      : 'warning',
+		assetFilter: assetFilename => {
+			return path_config.dev ? false: !(/vendor/.test(assetFilename));
+		}
 	}
 };
